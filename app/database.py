@@ -26,6 +26,7 @@ def init_db():
         asset_version,
         event_log,
         job,
+        notification,
         project,
         workflow_execution,
     )

@@ -1,5 +1,6 @@
 import base64
 import datetime
+import logging
 import threading
 from pathlib import Path
 
@@ -14,7 +15,10 @@ from app.schemas.workflow import GenerateWorkflowRequest
 from app.services.asset_service import create_asset_version_from_job
 from app.services.event_service import emit_event
 from app.services.mock_worker import MockWorker
+from app.services.notification_service import create_in_app_notification
 from app.services.wan_worker import Wan2_2Worker
+
+logger = logging.getLogger(__name__)
 
 JOB_STATUS_QUEUED = "queued"
 JOB_STATUS_PROCESSING = "processing"
@@ -184,6 +188,7 @@ def _run_job(job_id: str) -> None:
 
         _transition_ai_job(db, job, JOB_STATUS_PROCESSING, progress=0.05)
         _transition_workflow(db, workflow, WORKFLOW_STATUS_PROCESSING, progress=0.05)
+        logger.info("ai_job_started job_id=%s project_id=%s", job.id, job.project_id)
 
         emit_event(
             db,
@@ -298,7 +303,39 @@ def _run_job(job_id: str) -> None:
                 commit=False,
             )
 
+            create_in_app_notification(
+                db,
+                project_id=latest_job.project_id,
+                job_id=latest_job.id,
+                event_type="ai_job.completed",
+                title="Video generation completed",
+                message="Your AI video is ready in the asset library.",
+                payload={"asset_id": asset.id, "asset_version_id": version.id},
+                commit=False,
+            )
+            emit_event(
+                db,
+                event_type="notification.sent",
+                domain="notifications",
+                entity_id=latest_job.id,
+                project_id=latest_job.project_id,
+                job_id=latest_job.id,
+                payload={"channel": "in_app", "event_type": "ai_job.completed"},
+                commit=False,
+            )
+            emit_event(
+                db,
+                event_type="analytics.recorded",
+                domain="analytics",
+                entity_id=latest_job.id,
+                project_id=latest_job.project_id,
+                job_id=latest_job.id,
+                payload={"metric": "job_completed", "model": latest_job.model},
+                commit=False,
+            )
+
             db.commit()
+            logger.info("ai_job_completed job_id=%s project_id=%s", latest_job.id, latest_job.project_id)
 
     except Exception as exc:
         failed_job = db.query(AIJob).filter(AIJob.id == job_id).first()
@@ -328,7 +365,46 @@ def _run_job(job_id: str) -> None:
                 project_id=failed_job.project_id,
                 job_id=failed_job.id,
                 payload={"error": str(exc), "retry_count": failed_job.retry_count},
+                commit=False,
             )
+            logger.error(
+                "ai_job_failed job_id=%s project_id=%s error=%s",
+                failed_job.id,
+                failed_job.project_id,
+                str(exc),
+            )
+
+            create_in_app_notification(
+                db,
+                project_id=failed_job.project_id,
+                job_id=failed_job.id,
+                event_type="ai_job.failed",
+                title="Video generation failed",
+                message="Your AI job failed. Please retry with adjusted settings.",
+                payload={"error": str(exc), "retry_count": failed_job.retry_count},
+                commit=False,
+            )
+            emit_event(
+                db,
+                event_type="notification.sent",
+                domain="notifications",
+                entity_id=failed_job.id,
+                project_id=failed_job.project_id,
+                job_id=failed_job.id,
+                payload={"channel": "in_app", "event_type": "ai_job.failed"},
+                commit=False,
+            )
+            emit_event(
+                db,
+                event_type="analytics.recorded",
+                domain="analytics",
+                entity_id=failed_job.id,
+                project_id=failed_job.project_id,
+                job_id=failed_job.id,
+                payload={"metric": "job_failed", "model": failed_job.model},
+                commit=False,
+            )
+            db.commit()
     finally:
         db.close()
 
