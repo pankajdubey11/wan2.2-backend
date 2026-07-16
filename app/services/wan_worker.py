@@ -1,4 +1,4 @@
-import subprocess, time, os, uuid
+import subprocess
 from pathlib import Path
 
 
@@ -15,6 +15,7 @@ class Wan2_2Worker:
         task: str = "ti2v-5B", size: str = "704*1280",
         steps: int = 30, guidance: float = 6.0,
         seed: int | None = None, output_path: str | None = None,
+        progress_callback=None,
         timeout: int = 600,
     ) -> str:
         cmd = [

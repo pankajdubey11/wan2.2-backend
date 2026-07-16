@@ -1,5 +1,8 @@
-import time, uuid, shutil, os, threading
+import subprocess
+import time
+import uuid
 from pathlib import Path
+
 from app.config import settings
 
 
@@ -60,6 +63,3 @@ def _create_dummy_mp4(path: str):
     ])
     with open(path, "wb") as f:
         f.write(data)
-
-
-import subprocess
