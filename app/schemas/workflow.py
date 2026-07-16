@@ -28,8 +28,28 @@ class AIJobStatusResponse(BaseModel):
     workflow_execution_id: str
     status: str
     progress: float
+    model: str
     output_url: Optional[str] = None
     error: Optional[str] = None
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+
+
+class WorkflowExecutionResponse(BaseModel):
+    id: str
+    project_id: str
+    workflow_type: str
+    status: str
+    progress: float
+    error: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+
+class PaginatedResponse(BaseModel):
+    items: list
+    total: int
+    limit: int
+    offset: int

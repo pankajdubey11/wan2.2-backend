@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -13,13 +13,19 @@ router = APIRouter(tags=["assets"])
 
 
 @router.get("/api/projects/{project_id}/assets", response_model=list[AssetResponse])
-async def list_project_assets(project_id: str, db: Session = Depends(get_db)):
-    assets = (
+async def list_project_assets(
+    project_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    query = (
         db.query(Asset)
         .filter(Asset.project_id == project_id)
         .order_by(Asset.created_at.desc())
-        .all()
     )
+    total = query.count()
+    assets = query.offset(offset).limit(limit).all()
 
     result: list[AssetResponse] = []
     for asset in assets:
