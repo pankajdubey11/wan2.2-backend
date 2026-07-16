@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import ai_jobs, generate, health, projects, workflows
+from app.routers import ai_jobs, assets, generate, health, projects, workflows
 from app.config import settings
 from app.database import SessionLocal, init_db
 from app.models.project import Project
@@ -20,6 +20,7 @@ app.include_router(generate.router, prefix="/api", tags=["generate"])
 app.include_router(projects.router)
 app.include_router(workflows.router)
 app.include_router(ai_jobs.router)
+app.include_router(assets.router)
 
 
 @app.on_event("startup")

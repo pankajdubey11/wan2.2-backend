@@ -12,6 +12,7 @@ def emit_event(
     project_id: str | None = None,
     job_id: str | None = None,
     payload: dict | None = None,
+    commit: bool = True,
 ) -> EventLog:
     event = EventLog(
         event_type=event_type,
@@ -22,6 +23,7 @@ def emit_event(
         payload=payload or {},
     )
     db.add(event)
-    db.commit()
-    db.refresh(event)
+    if commit:
+        db.commit()
+        db.refresh(event)
     return event

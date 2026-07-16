@@ -20,6 +20,14 @@ def get_db():
 
 def init_db():
     # Ensure all models are registered before create_all.
-    from app.models import ai_job, event_log, job, project, workflow_execution  # noqa: F401
+    from app.models import (  # noqa: F401
+        ai_job,
+        asset,
+        asset_version,
+        event_log,
+        job,
+        project,
+        workflow_execution,
+    )
 
     Base.metadata.create_all(bind=engine)

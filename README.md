@@ -24,8 +24,13 @@ python -m uvicorn app.main:app --reload --port 8000
   - `GET /api/ai-jobs/{job_id}`
   - `GET /api/ai-jobs/{job_id}/download`
 
+- Sprint 2 asset endpoints:
+  - `GET /api/projects/{project_id}/assets`
+  - `GET /api/assets/{asset_id}/versions/{version_id}/download`
+
 ## Sprint 1 Notes
 
 - `project_id` is required for workflow submission.
 - A default project is auto-seeded on startup for local development.
 - AI lifecycle events are persisted in `event_logs`.
+- Completed AI jobs create immutable asset version records.

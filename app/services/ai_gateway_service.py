@@ -11,6 +11,7 @@ from app.models.ai_job import AIJob
 from app.models.project import Project
 from app.models.workflow_execution import WorkflowExecution
 from app.schemas.workflow import GenerateWorkflowRequest
+from app.services.asset_service import create_asset_version_from_job
 from app.services.event_service import emit_event
 from app.services.mock_worker import MockWorker
 from app.services.wan_worker import Wan2_2Worker
@@ -49,6 +50,7 @@ def _transition_ai_job(
     *,
     progress: float | None = None,
     error: str | None = None,
+    commit: bool = True,
 ) -> None:
     if new_status not in _ALLOWED_TRANSITIONS.get(job.status, set()):
         raise ValueError(f"Invalid transition: {job.status} -> {new_status}")
@@ -62,7 +64,8 @@ def _transition_ai_job(
         job.started_at = datetime.datetime.utcnow()
     if new_status in {JOB_STATUS_COMPLETED, JOB_STATUS_FAILED}:
         job.completed_at = datetime.datetime.utcnow()
-    db.commit()
+    if commit:
+        db.commit()
 
 
 def _transition_workflow(
@@ -72,6 +75,7 @@ def _transition_workflow(
     *,
     progress: float | None = None,
     error: str | None = None,
+    commit: bool = True,
 ) -> None:
     workflow.status = status
     if progress is not None:
@@ -82,7 +86,8 @@ def _transition_workflow(
         workflow.started_at = datetime.datetime.utcnow()
     if status in {WORKFLOW_STATUS_COMPLETED, WORKFLOW_STATUS_FAILED}:
         workflow.completed_at = datetime.datetime.utcnow()
-    db.commit()
+    if commit:
+        db.commit()
 
 
 def create_generation_workflow(
@@ -230,8 +235,27 @@ def _run_job(job_id: str) -> None:
 
         if latest_job and latest_workflow:
             latest_job.output_path = result_path
-            _transition_ai_job(db, latest_job, JOB_STATUS_COMPLETED, progress=1.0)
-            _transition_workflow(db, latest_workflow, WORKFLOW_STATUS_COMPLETED, progress=1.0)
+            asset, version = create_asset_version_from_job(
+                db,
+                job=latest_job,
+                output_path=result_path,
+                commit=False,
+            )
+
+            _transition_ai_job(
+                db,
+                latest_job,
+                JOB_STATUS_COMPLETED,
+                progress=1.0,
+                commit=False,
+            )
+            _transition_workflow(
+                db,
+                latest_workflow,
+                WORKFLOW_STATUS_COMPLETED,
+                progress=1.0,
+                commit=False,
+            )
 
             emit_event(
                 db,
@@ -244,6 +268,23 @@ def _run_job(job_id: str) -> None:
                     "workflow_execution_id": latest_workflow.id,
                     "output_path": latest_job.output_path,
                 },
+                commit=False,
+            )
+
+            emit_event(
+                db,
+                event_type="asset.created",
+                domain="assets",
+                entity_id=asset.id,
+                project_id=latest_job.project_id,
+                job_id=latest_job.id,
+                payload={
+                    "asset_id": asset.id,
+                    "asset_version_id": version.id,
+                    "version_number": version.version_number,
+                    "storage_path": version.storage_path,
+                },
+                commit=False,
             )
 
             emit_event(
@@ -254,11 +295,17 @@ def _run_job(job_id: str) -> None:
                 project_id=latest_job.project_id,
                 job_id=latest_job.id,
                 payload={"reason": "ai_job_completed"},
+                commit=False,
             )
+
+            db.commit()
 
     except Exception as exc:
         failed_job = db.query(AIJob).filter(AIJob.id == job_id).first()
         if failed_job:
+            failed_job.retry_count = (failed_job.retry_count or 0) + 1
+            db.commit()
+
             failed_workflow = (
                 db.query(WorkflowExecution)
                 .filter(WorkflowExecution.id == failed_job.workflow_execution_id)
@@ -280,7 +327,7 @@ def _run_job(job_id: str) -> None:
                 entity_id=failed_job.id,
                 project_id=failed_job.project_id,
                 job_id=failed_job.id,
-                payload={"error": str(exc)},
+                payload={"error": str(exc), "retry_count": failed_job.retry_count},
             )
     finally:
         db.close()
